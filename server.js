@@ -96,7 +96,7 @@ If not food:
     const resultText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 //return res.status(500).json(data);
     if (!resultText) {
-      return res.status(500).json({ error: "Invalid AI response" });
+     // return res.status(500).json({ error: "Invalid AI response" });
     }
 
     // ✅ Safe JSON parsing
