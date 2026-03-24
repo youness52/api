@@ -65,7 +65,7 @@ app.post("/analyze", async (req, res) => {
     // Debugging: Log Google's error if it exists
     if (data.error) {
       console.error("Gemini API Error:", data.error);
-      return res.status(500).json({ error: "AI Service Error" });
+      return res.status(500).json({ error: "AI Service Error "+ data.error });
     }
 
     const resultText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
