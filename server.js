@@ -9,22 +9,17 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-// 🔒 Simple rate limit (anti abuse)
+// Simple rate limit
 const requests = new Map();
-
 function isRateLimited(ip) {
   const now = Date.now();
-  const windowMs = 60000; // 1 min
+  const windowMs = 60000;
   const maxRequests = 15;
 
-  if (!requests.has(ip)) {
-    requests.set(ip, []);
-  }
-
+  if (!requests.has(ip)) requests.set(ip, []);
   const timestamps = requests.get(ip).filter(t => now - t < windowMs);
   timestamps.push(now);
   requests.set(ip, timestamps);
-
   return timestamps.length > maxRequests;
 }
 
@@ -38,24 +33,17 @@ app.post("/analyze", async (req, res) => {
 
     const { image } = req.body;
 
-    // ✅ Validate input
-    if (!image) {
-      return res.status(400).json({ error: "Image is required" });
+    if (!image || typeof image !== "string") {
+      return res.status(400).json({ error: "Image must be a base64 string" });
     }
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
+    // Gemini expects the base64 as a SCALAR string
+    const payload = {
+      contents: [
+        {
+          parts: [
             {
-              parts: [
-                {
-                  text: `
+              text: `
 You are a professional nutritionist.
 
 Analyze the food in this image and return ONLY JSON:
@@ -72,45 +60,69 @@ Analyze the food in this image and return ONLY JSON:
 
 If not food:
 { "error": "No food detected" }
-                  `,
-                },
-                {
-                  inlineData: {
-                    mimeType: "image/jpeg",
-                    data: image,
-                  },
-                },
-              ],
+            `,
+            },
+            {
+              // ✅ Correct base64 structure
+              inlineData: image, // must be a string, not object
             },
           ],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: "application/json",
-          },
-        }),
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: "application/json",
+      },
+    };
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       }
     );
 
     const data = await response.json();
 
     const resultText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-//return res.status(500).json(data);
+
     if (!resultText) {
-     // return res.status(500).json({ error: "Invalid AI response" });
+      return res.status(500).json({ error: "AI returned no text" });
     }
 
-    // ✅ Safe JSON parsing
     let parsed;
     try {
       parsed = JSON.parse(resultText);
     } catch (e) {
-      console.error("Parse error:", resultText);
+      console.error("Parse error from AI:", resultText);
       return res.status(500).json({ error: "Invalid JSON from AI" });
     }
 
-    // ✅ Normalize response
-    if (parsed.error) {
-      return res.status(400).json(parsed);
+    if (parsed.error) return res.status(400).json(parsed);
+
+    return res.json({
+      name: parsed.name || "Unknown Food",
+      calories: parsed.calories || 0,
+      protein: parsed.protein || 0,
+      carbs: parsed.carbs || 0,
+      fat: parsed.fat || 0,
+      servingSize: parsed.servingSize || "1 serving",
+      category: parsed.category || "other",
+    });
+  } catch (err) {
+    console.error("Server error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/", (req, res) => {
+  res.send("API is running ✅");
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("Server running on port " + PORT));      return res.status(400).json(parsed);
     }
 
     return res.json({
